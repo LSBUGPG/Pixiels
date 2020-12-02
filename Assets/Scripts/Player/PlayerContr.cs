@@ -4,11 +4,12 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 
-public class PlayerContr : PhysicsObject
+public class PlayerContr : MonoBehaviour
 {
     public float maxSpeed = 7;
     public float jumpTakeOffSpeed = 7;
     public float movement = 0f;
+    public float maxGroundAngle = 50.0f;
 
     public int lives;
     public Text text;
@@ -20,12 +21,14 @@ public class PlayerContr : PhysicsObject
     public float shrinkTime = 1;
     public float normalSize = 0.13263f;
     public float smallSize = 0.03937592f;
-    public float yOffset = 1;
     public bool shrink;
+    new Rigidbody2D rigidbody2D;
+    List <Collider2D> ground = new List<Collider2D>();
 
 
     void Start()
     {
+        rigidbody2D = GetComponent<Rigidbody2D>();
         text.GetComponent<Text>().text = "";
 
         shield = false;
@@ -35,11 +38,8 @@ public class PlayerContr : PhysicsObject
         shrink = false;
     }
 
-    protected override void ComputeVelocity()
+    void Update()
     {
-        Vector2 move = Vector2.zero;
-
-        move.x = Input.GetAxis("MoveHorizontal");
         movement = Input.GetAxis("MoveHorizontal");
 
         if (movement < 0f)
@@ -55,24 +55,22 @@ public class PlayerContr : PhysicsObject
         if (Input.GetButtonDown("Shrink"))
         {
             shrink = !shrink;
-
             StartCoroutine(ShrinkingGrow(shrink));
         }
 
-        transform.localScale = new Vector2(direction*scale, scale);
-
-        if (Input.GetButtonDown ("Jump") && grounded)
+        Vector2 velocity = rigidbody2D.velocity;
+        if (Input.GetButtonDown ("Jump") && ground.Count > 0)
         {
-            velocity.y = jumpTakeOffSpeed;
+            velocity += Vector2.up * jumpTakeOffSpeed;
         }
-
         else if (Input.GetButtonUp ("Jump"))
         {
             if (velocity.y > 0)
-                velocity.y = velocity.y * .5f;
+                velocity.y *= 0.5f;
         }
 
-        targetVelocity = move * maxSpeed;
+        velocity.x = movement * maxSpeed;
+        rigidbody2D.velocity = velocity;
 
         text.text = lives.ToString();
 
@@ -81,27 +79,38 @@ public class PlayerContr : PhysicsObject
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }
 
+        transform.localScale = new Vector2(direction*scale, scale);
     }
 
     IEnumerator ShrinkingGrow(bool shrink)
     {
         float from = shrink ? normalSize : smallSize;
         float to = shrink ? smallSize : normalSize;
-
         for (float time = 0; time < shrinkTime; time += Time.deltaTime)
         {
             scale = Mathf.Lerp(from, to, time / shrinkTime);
-
-            velocity.y += (shrink ? -yOffset : yOffset);
-
             yield return null;
         }
-
     }
 
     void OnCollisionEnter2D(Collision2D coll)
     {
-
+        if (coll.collider.CompareTag("Ground"))
+        {
+            bool flat = false;
+            foreach (ContactPoint2D contact in coll.contacts)
+            {
+                if (Vector2.Angle(Vector2.up, contact.normal) < maxGroundAngle)
+                {
+                    flat = true;
+                    break;
+                }
+            }
+            if (flat)
+            {
+                ground.Add(coll.collider);
+            }
+        }
         if (!shield)
         {
             if (coll.gameObject.tag == "Spikes")
@@ -116,4 +125,11 @@ public class PlayerContr : PhysicsObject
         }
     }
 
+    void OnCollisionExit2D(Collision2D coll)
+    {
+        if (coll.collider.CompareTag("Ground"))
+        {
+            ground.Remove(coll.collider);
+        }
+    }
 }
